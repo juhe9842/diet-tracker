@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="饮食记录">
+<meta name="theme-color" content="#0d0f1a">
+<title>减脂饮食记录</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#0d0f1a;color:#e8e8f0;font-family:'PingFang SC','Noto Sans SC',sans-serif;overflow-x:hidden}
+  input,textarea,button{font-family:inherit}
+  button{cursor:pointer}
+  textarea{resize:vertical}
+  ::-webkit-scrollbar{width:0}
+
+  /* Safe area */
+  #app{min-height:100vh;min-height:-webkit-fill-available;padding-bottom:env(safe-area-inset-bottom)}
+
+  .header{background:linear-gradient(135deg,#1a1040,#0d0f1a);padding:calc(env(safe-area-inset-top) + 18px) 18px 16px;border-bottom:1px solid #1e2030}
+  .nav{display:flex;gap:4px;padding:10px 14px 0;background:#0d0f1a;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .nav::-webkit-scrollbar{display:none}
+  .tab-btn{padding:9px 14px;border-radius:10px;font-size:13px;font-weight:600;background:transparent;color:#555;border:none;white-space:nowrap;transition:all .2s}
+  .tab-btn.active{background:#7c6af7;color:#fff}
+  .content{padding:16px}
+  .card{background:#111320;border:1px solid #1e2030;border-radius:14px;padding:16px;margin-bottom:14px}
+  .input{background:#0d0f1a;border:1px solid #2a2d3e;border-radius:8px;color:#e8e8f0;padding:9px 12px;font-size:14px;outline:none;width:100%}
+  .btn-primary{width:100%;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,#7c6af7,#60a5fa);color:#fff;font-size:14px;font-weight:700}
+  .btn-green{width:100%;padding:11px;border-radius:10px;border:1px solid #34d39944;background:#1a3a1a;color:#34d399;font-size:14px;font-weight:700}
+  .food-card{display:flex;justify-content:space-between;align-items:center;padding:10px 13px;margin-bottom:6px;border-radius:10px;background:#1a1d2e;border:1px solid #2a2d3e;transition:all .15s;-webkit-user-select:none}
+  .food-card:active{background:#1e213a;border-color:#7c6af7}
+  .food-card.avoid{background:#180d0d;border-color:#ff6b6b33;opacity:.55}
+  .food-card.warn{border-color:#fbbf2466}
+  .food-card.highlight{border-color:#34d39944}
+  .tag{font-size:10px;padding:1px 6px;border-radius:6px;display:inline-block}
+  .macro-bar-wrap{margin-bottom:9px}
+  .macro-bar-track{background:#1e2030;border-radius:4px;height:7px;overflow:hidden}
+  .macro-bar-fill{height:100%;border-radius:4px;transition:width .4s ease}
+  .ring-wrap{position:relative;width:70px;height:70px;flex-shrink:0}
+  .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .fructose-bar{background:#0d0f1a;border-radius:10px;padding:10px 14px}
+  .mode-bar{display:flex;gap:5px;background:#0d0f1a;border-radius:10px;padding:4px;margin-bottom:14px}
+  .mode-btn{flex:1;padding:8px 4px;border-radius:8px;font-size:12px;font-weight:600;background:transparent;color:#555;border:1px solid transparent;transition:all .2s}
+  .mode-btn.active{background:#1e2030;color:#a78bfa;border-color:#7c6af755}
+  .log-item{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;margin-bottom:5px;border-radius:10px;background:#111320;border:1px solid #1e2030}
+  .pill{font-size:12px;padding:3px 10px;border-radius:20px}
+  .preview-card{background:#0d0f1a;border:1px solid #2a2d3e;border-radius:12px;padding:12px 14px;margin-bottom:10px}
+  .macro-grid{display:grid;gap:6px;margin-bottom:12px}
+  .macro-pill{background:#0a0c18;border-radius:7px;padding:5px 10px;text-align:center}
+  .toast{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 80px);left:50%;transform:translateX(-50%);background:#1e2030;color:#34d399;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #34d39933;z-index:999;animation:fadeUp .3s ease;pointer-events:none;white-space:nowrap}
+  @keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+  .fade-in{animation:fadeIn .2s ease}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat-box{background:#0d0f1a;border-radius:10px;padding:10px 14px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ── Data ─────────────────────────────────────────────────
+const GOALS = { cal:1900, protein:150, carb:190, fat:40, fructose:25 };
+const SK_REC = 'jj_diet_records_v1';
+const SK_FAV = 'jj_diet_favorites_v1';
+
+const WEEK_PLAN = [
+  {day:'周一',type:'high_protein',theme:'高蛋白日',tips:'多吃鸡胸/鱼/蛋，控制精制碳水'},
+  {day:'周二',type:'low_carb',theme:'低碳日',tips:'主食减半，多蔬菜，蛋白质不减'},
+  {day:'周三',type:'balanced',theme:'均衡日',tips:'按标准计划执行，充足饮水'},
+  {day:'周四',type:'high_protein',theme:'高蛋白日',tips:'训练日可稍增碳水补充能量'},
+  {day:'周五',type:'low_carb',theme:'低碳日',tips:'晚餐以蔬菜蛋白为主，不吃主食'},
+  {day:'周六',type:'balanced',theme:'均衡日',tips:'可有一餐适度放松，不超总量'},
+  {day:'周日',type:'fasting',theme:'轻断食日',tips:'16:8断食，进食窗口12:00–20:00'},
+];
+
+const MEAL_PLAN = {
+  breakfast:{label:'早餐',icon:'🌅',time:'7:00–8:00',suggestions:[
+    {name:'燕麦粥 (80g)',cal:300,protein:10,carb:54,fat:3,fructose:0.3,avoidOn:['low_carb','fasting'],warnOn:['high_protein']},
+    {name:'水煮蛋 (2个)',cal:144,protein:12,carb:1,fat:10,fructose:0,highlight:['high_protein','low_carb','fasting']},
+    {name:'无糖豆浆 (300ml)',cal:54,protein:5,carb:3,fat:2,fructose:0.2,highlight:['high_protein','low_carb']},
+    {name:'全麦面包 (1片)',cal:80,protein:3,carb:14,fat:1,fructose:0.5,avoidOn:['low_carb','fasting']},
+    {name:'脱脂牛奶 (250ml)',cal:83,protein:8,carb:12,fat:0,fructose:0,highlight:['high_protein','balanced']},
+  ]},
+  lunch:{label:'午餐',icon:'☀️',time:'12:00–13:00',suggestions:[
+    {name:'糙米饭 (150g熟)',cal:195,protein:4,carb:42,fat:2,fructose:0,avoidOn:['low_carb','fasting'],warnOn:['high_protein']},
+    {name:'鸡胸肉 (150g)',cal:165,protein:31,carb:0,fat:4,fructose:0,highlight:['high_protein','low_carb','fasting','balanced']},
+    {name:'清炒西兰花 (200g)',cal:68,protein:4,carb:11,fat:1,fructose:0.5,highlight:['low_carb','high_protein','fasting']},
+    {name:'清蒸鱼 (200g)',cal:200,protein:36,carb:0,fat:5,fructose:0,highlight:['high_protein','low_carb','balanced']},
+    {name:'豆腐 (200g)',cal:120,protein:12,carb:4,fat:6,fructose:0,highlight:['high_protein','low_carb']},
+  ]},
+  dinner:{label:'晚餐',icon:'🌙',time:'18:00–19:00',suggestions:[
+    {name:'蔬菜鸡胸肉沙拉',cal:200,protein:28,carb:12,fat:4,fructose:1.0,highlight:['low_carb','fasting','balanced']},
+    {name:'凉拌黄瓜',cal:30,protein:1,carb:6,fat:0,fructose:0.8,highlight:['low_carb','fasting']},
+    {name:'清炒菠菜 (200g)',cal:46,protein:4,carb:6,fat:1,fructose:0.1,highlight:['low_carb','fasting','high_protein']},
+    {name:'虾仁 (150g)',cal:143,protein:28,carb:2,fat:2,fructose:0,highlight:['high_protein','low_carb']},
+    {name:'冬瓜汤 (300ml)',cal:24,protein:1,carb:5,fat:0,fructose:0.3,highlight:['fasting','low_carb']},
+  ]},
+  snack:{label:'加餐',icon:'🍎',time:'15:00',suggestions:[
+    {name:'苹果 (半个)',cal:47,protein:0,carb:12,fat:0,fructose:5.7,warnOn:['low_carb'],avoidOn:['fasting'],liverWarn:true},
+    {name:'无糖希腊酸奶(100g)',cal:59,protein:10,carb:4,fat:1,fructose:0,highlight:['high_protein','balanced']},
+    {name:'黄瓜 (1根)',cal:16,protein:1,carb:3,fat:0,fructose:0.8,highlight:['low_carb','fasting']},
+    {name:'水煮毛豆 (50g)',cal:67,protein:6,carb:5,fat:3,fructose:0,highlight:['high_protein']},
+  ]},
+};
+
+const TYPE_COLOR = {high_protein:'#60a5fa',low_carb:'#34d399',balanced:'#a78bfa',fasting:'#fbbf24'};
+
+// ── Utils ─────────────────────────────────────────────────
+const n = v => isNaN(parseFloat(v)) ? 0 : parseFloat(v);
+const lsGet = k => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null} };
+const lsSet = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));return true}catch{return false} };
+const today = () => new Date().toISOString().slice(0,10);
+const nowTime = () => new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+const getDayPlan = dateStr => { const d=new Date(dateStr).getDay(); return WEEK_PLAN[d===0?6:d-1]; };
+const typeColor = t => TYPE_COLOR[t]||'#a78bfa';
+
+function parseImport(raw) {
+  try{const a=JSON.parse(raw);if(Array.isArray(a))return a.filter(x=>x.name&&x.cal)}catch{}
+  const res=[];
+  for(const line of raw.split('\n').map(l=>l.trim()).filter(Boolean)){
+    if(/^[\-\|=\s]+$/.test(line)||/食物|热量/.test(line))continue;
+    const cols=line.split(/\||\t/).map(c=>c.trim()).filter(Boolean);
+    if(cols.length<2)continue;
+    const name=cols[0].replace(/\*+/g,'').trim();
+    if(!name||name==='合计')continue;
+    const p=s=>{const m=(s||'').match(/([\d.]+)/);return m?parseFloat(m[1]):0};
+    const cal=p(cols[1]);
+    if(cal>0)res.push({name,cal,protein:p(cols[2]),carb:p(cols[3]),fat:p(cols[4]),fructose:p(cols[5])});
+  }
+  return res;
+}
+
+// ── State ─────────────────────────────────────────────────
+const state = {
+  tab: 'record',
+  addMode: 'import',
+  selectedDate: today(),
+  records: lsGet(SK_REC) || {},
+  favorites: lsGet(SK_FAV) || [],
+  importPreview: [],
+  importAddedIdx: new Set(),
+  importFavIdx: new Set(),
+};
+
+function saveRecords() { lsSet(SK_REC, state.records); showToast('✓ 已保存'); }
+function saveFavorites() { lsSet(SK_FAV, state.favorites); }
+
+let toastTimer;
+function showToast(msg, color='#34d399') {
+  let t = document.getElementById('toast');
+  if(!t){ t=document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.style.color = color;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { if(t)t.style.display='none'; }, 2000);
+}
+
+function addFood(item) {
+  const entry = {...item, time: nowTime()};
+  if(!state.records[state.selectedDate]) state.records[state.selectedDate]=[];
+  state.records[state.selectedDate].push(entry);
+  saveRecords();
+  render();
+}
+function removeEntry(idx) {
+  state.records[state.selectedDate].splice(idx,1);
+  saveRecords();
+  render();
+}
+function addFav(item) {
+  const c={name:item.name,cal:n(item.cal),protein:n(item.protein),carb:n(item.carb),fat:n(item.fat),fructose:n(item.fructose)};
+  state.favorites = [c, ...state.favorites.filter(f=>f.name!==c.name)];
+  saveFavorites();
+  render();
+}
+function removeFav(name) {
+  state.favorites = state.favorites.filter(f=>f.name!==name);
+  saveFavorites();
+  render();
+}
+
+// ── Render helpers ────────────────────────────────────────
+function macroBar(label, current, goal, color, warn=false) {
+  const pct = Math.min((current/goal)*100,100);
+  const over = current > goal;
+  const barColor = over&&warn ? '#ff6b6b' : color;
+  return `
+  <div class="macro-bar-wrap">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;color:#aaa">
+      <span>${label}${warn&&over?' ⚠️':''}</span>
+      <span style="color:${over?'#ff6b6b':'#fff'}">${Math.round(current)}g / ${goal}g</span>
+    </div>
+    <div class="macro-bar-track">
+      <div class="macro-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+    </div>
+  </div>`;
+}
+
+function foodCardHTML(item, idx, source, dayType) {
+  const isHL    = item.highlight?.includes(dayType);
+  const isAvoid = item.avoidOn?.includes(dayType);
+  const isWarn  = item.warnOn?.includes(dayType);
+  const isFav   = source === 'fav';
+  let cls = 'food-card';
+  if(isAvoid) cls+=' avoid';
+  else if(isWarn) cls+=' warn';
+  else if(isHL) cls+=' highlight';
+  const tags = [
+    isHL    ? `<span class="tag" style="background:#34d39922;color:#34d399">推荐</span>` : '',
+    isWarn  ? `<span class="tag" style="background:#fbbf2422;color:#fbbf24">今日慎用</span>` : '',
+    isAvoid ? `<span class="tag" style="background:#ff6b6b22;color:#ff6b6b">今日不宜</span>` : '',
+    item.liverWarn ? `<span class="tag" style="background:#ff6b6b22;color:#ff6b6b">⚠️高果糖</span>` : '',
+  ].join('');
+  const action = isAvoid ? '' : `onclick="handleFoodClick('${source}',${idx})"`;
+  const removeBtn = isFav ? `<span onclick="handleRemoveFav(${idx});event.stopPropagation()" style="color:#333;font-size:18px;padding:2px 4px;line-height:1">×</span>` : '';
+  return `
+  <div class="${cls}" ${action}>
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:3px">
+        ${tags}
+        <span style="font-size:14px;color:${isAvoid?'#666':'#e8e8f0'};font-weight:500">${item.name}</span>
+      </div>
+      <div style="font-size:11px;color:#555">
+        蛋白 ${item.protein}g · 碳水 ${item.carb}g · 脂肪 ${item.fat}g
+        ${item.fructose>0?`<span style="color:${item.fructose>=5?'#ff6b6b':'#777'};margin-left:6px">果糖 ${item.fructose}g</span>`:''}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:700;color:${isAvoid?'#444':'#7c6af7'}">${item.cal}</div>
+        <div style="font-size:10px;color:#555">kcal</div>
+      </div>
+      ${removeBtn}
+    </div>
+  </div>`;
+}
+
+function previewCardHTML(item, i) {
+  const isAdded = state.importAddedIdx.has(i);
+  const isFaved = state.importFavIdx.has(i) || state.favorites.some(f=>f.name===item.name);
+  const cols = item.fructose>0 ? 4 : 3;
+  const fructosePill = item.fructose>0
+    ? `<div class="macro-pill" style="border:1px solid ${item.fructose>=5?'#ff6b6b22':'#f8717122'}">
+        <div style="font-size:10px;color:#555;margin-bottom:1px">果糖</div>
+        <div style="font-size:13px;font-weight:700;color:${item.fructose>=5?'#ff6b6b':'#f87171'}">${item.fructose}<span style="font-size:10px;font-weight:400">g</span></div>
+       </div>` : '';
+  return `
+  <div class="preview-card fade-in">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div style="font-size:14px;color:#e8e8f0;font-weight:600;flex:1;padding-right:10px">${item.name}</div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:20px;font-weight:800;color:#a78bfa;line-height:1">${item.cal}</div>
+        <div style="font-size:10px;color:#555">kcal</div>
+      </div>
+    </div>
+    <div class="macro-grid" style="grid-template-columns:repeat(${cols},1fr)">
+      <div class="macro-pill" style="border:1px solid #60a5fa22"><div style="font-size:10px;color:#555;margin-bottom:1px">蛋白质</div><div style="font-size:13px;font-weight:700;color:#60a5fa">${item.protein}<span style="font-size:10px;font-weight:400">g</span></div></div>
+      <div class="macro-pill" style="border:1px solid #34d39922"><div style="font-size:10px;color:#555;margin-bottom:1px">碳水</div><div style="font-size:13px;font-weight:700;color:#34d399">${item.carb}<span style="font-size:10px;font-weight:400">g</span></div></div>
+      <div class="macro-pill" style="border:1px solid #fbbf2422"><div style="font-size:10px;color:#555;margin-bottom:1px">脂肪</div><div style="font-size:13px;font-weight:700;color:#fbbf24">${item.fat}<span style="font-size:10px;font-weight:400">g</span></div></div>
+      ${fructosePill}
+    </div>
+    <div style="display:flex;gap:6px">
+      <button onclick="handlePreviewAdd(${i})" style="flex:1;padding:7px;border-radius:8px;border:none;background:${isAdded?'#1a3a1a':'linear-gradient(135deg,#7c6af7,#60a5fa)'};color:${isAdded?'#34d399':'#fff'};font-size:13px;font-weight:700">${isAdded?'✓ 已添加':'+ 加入今日'}</button>
+      <button onclick="handlePreviewFav(${i})" style="padding:7px 12px;border-radius:8px;border:1px solid ${isFaved?'#2a2d3e':'#fbbf2466'};background:transparent;color:${isFaved?'#555':'#fbbf24'};font-size:13px">${isFaved?'⭐':'☆ 收藏'}</button>
+    </div>
+  </div>`;
+}
+
+// ── Tab renders ───────────────────────────────────────────
+function renderRecord() {
+  const dp = getDayPlan(state.selectedDate);
+  const recs = state.records[state.selectedDate] || [];
+  const totals = recs.reduce((a,r)=>({cal:a.cal+n(r.cal),protein:a.protein+n(r.protein),carb:a.carb+n(r.carb),fat:a.fat+n(r.fat),fructose:a.fructose+n(r.fructose)}),{cal:0,protein:0,carb:0,fat:0,fructose:0});
+  const calPct = Math.min((totals.cal/GOALS.cal)*100,100);
+  const calRemain = GOALS.cal - totals.cal;
+  const fc = totals.fructose>GOALS.fructose?'#ff6b6b':totals.fructose>GOALS.fructose*.7?'#fbbf24':'#34d399';
+
+  // Ring SVG
+  const r=27, circ=2*Math.PI*r;
+  const dash = circ*(1-calPct/100);
+  const ringColor = totals.cal>GOALS.cal?'#ff6b6b':'#7c6af7';
+
+  // Date badge
+  const isToday = state.selectedDate===today();
+  const dateBadge = !isToday ? `<span style="font-size:12px;color:${typeColor(dp.type)};background:${typeColor(dp.type)}22;padding:3px 10px;border-radius:20px">${dp.theme}</span>` : '';
+
+  // Log items
+  const logHTML = recs.length===0
+    ? `<div style="text-align:center;color:#222;padding:12px 0;font-size:13px">暂无记录 ↓</div>`
+    : recs.map((r,i)=>`
+      <div class="log-item fade-in">
+        <div>
+          <span style="font-size:14px;color:#e8e8f0">${r.name}</span>
+          <span style="font-size:11px;color:#444;margin-left:8px">${r.time}</span>
+          ${n(r.fructose)>0?`<span style="font-size:11px;color:${n(r.fructose)>=5?'#ff6b6b':'#666'};margin-left:8px">果糖 ${r.fructose}g</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="color:#a78bfa;font-weight:700;font-size:13px">${r.cal} kcal</span>
+          <span onclick="removeEntry(${i})" style="color:#555;font-size:22px;line-height:1;padding:0 4px">×</span>
+        </div>
+      </div>`).join('');
+
+  // Favorites
+  const favHTML = state.favorites.length===0 ? '' : `
+    <div style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:8px">⭐ 常用食物</div>
+      ${state.favorites.map((f,i)=>foodCardHTML(f,i,'fav',dp.type)).join('')}
+    </div>`;
+
+  // Add section content
+  let addContent = '';
+  if(state.addMode==='import') {
+    const preview = state.importPreview;
+    const previewHTML = preview.length===0 ? '' : `
+      <div style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:12px;color:#7c6af7">识别到 ${preview.length} 条</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="handlePreviewFavAll()" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid #fbbf2466;background:transparent;color:#fbbf24">⭐ 全部收藏</button>
+            <button onclick="handlePreviewAddAll()" style="font-size:11px;padding:4px 10px;border-radius:8px;border:none;background:#7c6af7;color:#fff">✓ 全部添加</button>
+          </div>
+        </div>
+        ${preview.map((p,i)=>previewCardHTML(p,i)).join('')}
+      </div>`;
+    addContent = `
+      <div style="font-size:12px;color:#666;margin-bottom:8px;line-height:1.7">告诉 Claude「我吃了XXX」→ 收到表格 → <span style="color:#a78bfa">复制 → 粘贴 → 解析</span></div>
+      <div style="font-size:11px;color:#ff6b6b88;background:#1a0f0f;border-radius:8px;padding:8px 12px;margin-bottom:10px">💡 可说「包含果糖数据」，我会在第5列加上果糖含量</div>
+      <textarea id="importTA" rows="4" placeholder="粘贴表格，例如：&#10;酥皮热狗 (1个) | 550 | 15 | 45 | 32 | 0&#10;香蕉 (2根) | 214 | 3 | 54 | 1 | 12" style="width:100%;box-sizing:border-box;background:#0d0f1a;border:1px solid #2a2d3e;border-radius:10px;color:#e8e8f0;padding:12px;font-size:13px;outline:none;resize:vertical;font-family:monospace;line-height:1.6;margin-bottom:8px"></textarea>
+      <button onclick="handleParse()" class="btn-primary">🔍 解析表格</button>
+      <div id="parseErr" style="color:#ff6b6b;font-size:12px;margin-top:8px;display:none"></div>
+      ${previewHTML}`;
+  } else if(state.addMode==='custom') {
+    addContent = `
+      <input class="input" id="cf-name" placeholder="食物名称 *" style="margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <input class="input" id="cf-cal" type="number" placeholder="热量 kcal *">
+        <input class="input" id="cf-protein" type="number" placeholder="蛋白质 g">
+        <input class="input" id="cf-carb" type="number" placeholder="碳水 g">
+        <input class="input" id="cf-fat" type="number" placeholder="脂肪 g">
+      </div>
+      <input class="input" id="cf-fructose" type="number" placeholder="果糖 g（脂肪肝重要）" style="margin-bottom:12px">
+      <div style="display:flex;gap:8px">
+        <button onclick="handleCustomAdd(false)" class="btn-primary" style="flex:1">+ 添加记录</button>
+        <button onclick="handleCustomAdd(true)" style="padding:11px 14px;border-radius:10px;border:1px solid #7c6af7;background:transparent;color:#a78bfa;font-size:13px">⭐ 添加并收藏</button>
+      </div>`;
+  } else {
+    // Plan mode
+    const legend = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      ${[['推荐','#34d399'],['今日慎用','#fbbf24'],['今日不宜','#ff6b6b']].map(([l,c])=>`<span class="tag" style="background:${c}22;color:${c}">${l}</span>`).join('')}
+      <span style="font-size:10px;color:#444">基于今日：${dp.theme}</span>
+    </div>`;
+    const planHTML = Object.entries(MEAL_PLAN).map(([key,meal])=>`
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;color:#555;margin-bottom:6px">${meal.icon} ${meal.label} · ${meal.time}</div>
+        ${meal.suggestions.map((s,i)=>foodCardHTML(s,i,`plan_${key}`,dp.type)).join('')}
+      </div>`).join('');
+    addContent = legend + planHTML;
+  }
+
+  return `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <input type="date" value="${state.selectedDate}" onchange="state.selectedDate=this.value;render()" style="background:#1a1d2e;border:1px solid #2a2d3e;border-radius:8px;color:#e8e8f0;padding:7px 12px;font-size:13px;outline:none">
+      ${dateBadge}
+    </div>
+
+    <!-- Summary -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+        <div class="ring-wrap">
+          <svg width="70" height="70" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r="${r}" fill="none" stroke="#1e2030" stroke-width="7"/>
+            <circle cx="35" cy="35" r="${r}" fill="none" stroke="${ringColor}" stroke-width="7" stroke-linecap="round"
+              stroke-dasharray="${circ}" stroke-dashoffset="${dash}" transform="rotate(-90 35 35)"
+              style="transition:stroke-dashoffset .5s ease"/>
+          </svg>
+          <div class="ring-center">
+            <div style="font-size:13px;font-weight:800;color:#fff">${Math.round(totals.cal)}</div>
+            <div style="font-size:9px;color:#666">kcal</div>
+          </div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;color:#aaa;margin-bottom:8px">
+            ${calRemain>0?'还可摄入':'已超出'} <span style="color:${calRemain>0?'#a78bfa':'#ff6b6b'};font-weight:700;font-size:15px">${Math.abs(Math.round(calRemain))}</span> kcal
+          </div>
+          ${macroBar('蛋白质',totals.protein,GOALS.protein,'#60a5fa')}
+          ${macroBar('碳水',totals.carb,GOALS.carb,'#34d399')}
+          ${macroBar('脂肪',totals.fat,GOALS.fat,'#fbbf24',true)}
+        </div>
+      </div>
+      <div class="fructose-bar" style="border:1px solid ${fc}33">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:13px;font-weight:700;color:${fc}">🍯 果糖</span>
+            <span style="font-size:10px;color:#555">脂肪肝重点控制</span>
+          </div>
+          <span style="font-size:14px;font-weight:700;color:${fc}">${Math.round(totals.fructose*10)/10}g / ${GOALS.fructose}g</span>
+        </div>
+        <div class="macro-bar-track">
+          <div class="macro-bar-fill" style="width:${Math.min(totals.fructose/GOALS.fructose*100,100)}%;background:${fc}"></div>
+        </div>
+        ${totals.fructose>GOALS.fructose?`<div style="font-size:11px;color:#ff6b6b;margin-top:5px">⚠️ 已超出今日果糖限额</div>`:''}
+        ${totals.fructose>GOALS.fructose*.7&&totals.fructose<=GOALS.fructose?`<div style="font-size:11px;color:#fbbf24;margin-top:5px">果糖接近上限，今日避免再吃水果</div>`:''}
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:#444;margin-bottom:8px">今日已记录 ${recs.length} 条</div>
+      ${logHTML}
+    </div>
+
+    <!-- Favorites -->
+    ${favHTML}
+
+    <!-- Add section -->
+    <div class="card">
+      <div class="mode-bar">
+        <button class="mode-btn ${state.addMode==='import'?'active':''}" onclick="setMode('import')">💬 对话导入</button>
+        <button class="mode-btn ${state.addMode==='custom'?'active':''}" onclick="setMode('custom')">✏️ 手动添加</button>
+        <button class="mode-btn ${state.addMode==='plan'?'active':''}" onclick="setMode('plan')">📋 推荐列表</button>
+      </div>
+      ${addContent}
+    </div>`;
+}
+
+function renderPlan() {
+  return `
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:12px">📊 你的个人数据</div>
+      <div class="grid-2">
+        ${[['身高','182 cm'],['体重','110 kg'],['BMI','33.2'],['目标体重','~78 kg'],['每日热量','1900 kcal'],['脂肪上限','40g'],['果糖上限','25g/天'],['减重速度','~0.5 kg/周']].map(([k,v])=>`
+          <div class="stat-box"><div style="font-size:11px;color:#555">${k}</div><div style="font-size:14px;font-weight:700;color:#e8e8f0;margin-top:2px">${v}</div></div>`).join('')}
+      </div>
+    </div>
+    <div style="background:#1a0f0f;border:1px solid #ff6b6b33;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#ff6b6b;margin-bottom:10px">🫀 脂肪肝饮食要点</div>
+      ${['🚫 严格限制果糖：每天 ≤25g，避免果汁、含糖饮料、蜂蜜','🚫 避免高脂食物：油炸、肥肉、动物内脏、奶油','🍎 水果每天 ≤1份，优先低糖水果（蓝莓、草莓、猕猴桃）','✅ 多吃深色蔬菜、优质蛋白（鱼、鸡胸、豆腐）','✅ 每天饮水 2500ml','✅ 减重本身是改善脂肪肝最有效的方法'].map(t=>`<div style="font-size:13px;color:#888;margin-bottom:7px">${t}</div>`).join('')}
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:10px">⚠️ 高果糖食物避免清单</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${['苹果汁','橙汁','葡萄','芒果','荔枝','龙眼','蜂蜜','玉米糖浆','含糖可乐','果冻','糖果','饼干夹心'].map(f=>`<span class="pill" style="background:#ff6b6b22;color:#ff6b6b">${f}</span>`).join('')}
+      </div>
+    </div>`;
+}
+
+function renderWeek() {
+  const todayIdx = new Date().getDay()===0?6:new Date().getDay()-1;
+  return `
+    <div style="font-size:13px;color:#555;margin-bottom:12px">本周饮食策略安排</div>
+    ${WEEK_PLAN.map((d,i)=>`
+      <div style="background:${i===todayIdx?'linear-gradient(135deg,#1e1040,#0f1a30)':'#111320'};border:1px solid ${i===todayIdx?'#7c6af7':'#1e2030'};border-radius:14px;padding:13px 16px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:15px;font-weight:800;color:${i===todayIdx?'#a78bfa':'#e8e8f0'}">${d.day}</span>
+            ${i===todayIdx?'<span style="font-size:10px;background:#7c6af7;color:#fff;padding:2px 8px;border-radius:20px">今天</span>':''}
+          </div>
+          <span class="pill" style="color:${typeColor(d.type)};background:${typeColor(d.type)}22">${d.theme}</span>
+        </div>
+        <div style="font-size:12px;color:#666">${d.tips}</div>
+      </div>`).join('')}`;
+}
+
+function renderBackup() {
+  const totalDays = Object.keys(state.records).length;
+  const totalEntries = Object.values(state.records).reduce((a,v)=>a+v.length,0);
+  const backupData = JSON.stringify({records:state.records,favorites:state.favorites,exportedAt:new Date().toISOString()},null,2);
+  return `
+    <div style="font-size:13px;color:#555;margin-bottom:14px;line-height:1.7">
+      数据存储在<span style="color:#a78bfa">本设备 Safari</span> 的 localStorage 里。<br>
+      清除浏览器数据会丢失，建议定期备份到备忘录。
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:4px">📦 导出备份</div>
+      <div style="font-size:12px;color:#555;margin-bottom:12px">当前共 ${totalDays} 天记录，${totalEntries} 条饮食，${state.favorites.length} 个收藏</div>
+      <button onclick="handleCopyBackup()" class="btn-primary" style="margin-bottom:10px">📋 复制备份数据</button>
+      <div style="font-size:11px;color:#444;margin-bottom:6px">或长按下方文本框全选复制：</div>
+      <textarea readonly rows="6" style="width:100%;box-sizing:border-box;background:#0d0f1a;border:1px solid #2a2d3e;border-radius:8px;color:#666;padding:10px;font-size:11px;outline:none;font-family:monospace" id="backupTA">${backupData}</textarea>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:4px">🔄 从备份恢复</div>
+      <div style="font-size:12px;color:#555;margin-bottom:10px">粘贴之前导出的备份文本</div>
+      <textarea id="restoreTA" rows="6" placeholder="粘贴备份文本..." style="width:100%;box-sizing:border-box;background:#0d0f1a;border:1px solid #2a2d3e;border-radius:8px;color:#e8e8f0;padding:10px;font-size:11px;outline:none;font-family:monospace;margin-bottom:10px"></textarea>
+      <button onclick="handleRestore()" style="width:100%;padding:11px;border-radius:10px;border:1px solid #fbbf2444;background:#2a1f00;color:#fbbf24;font-size:14px;font-weight:700">🔄 恢复数据</button>
+    </div>`;
+}
+
+// ── Main render ───────────────────────────────────────────
+function render() {
+  const dp = getDayPlan(today());
+  const tc = typeColor(dp.type);
+  const tabContent = {
+    record: renderRecord,
+    plan: renderPlan,
+    week: renderWeek,
+    backup: renderBackup,
+  }[state.tab]();
+
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div style="font-size:11px;color:#7c6af7;letter-spacing:3px;text-transform:uppercase;margin-bottom:3px">减脂饮食管理 · 脂肪肝专项</div>
+      <div style="font-size:22px;font-weight:800;background:linear-gradient(90deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">每日饮食记录</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:#555">今天</span>
+          <span style="font-size:11px;background:${tc}22;color:${tc};padding:2px 9px;border-radius:20px;font-weight:700">${dp.theme}</span>
+          <span style="font-size:11px;color:#444">${dp.tips}</span>
+        </div>
+      </div>
+    </div>
+    <nav class="nav">
+      ${[['record','📋 记录'],['plan','🗓 计划'],['week','📅 本周'],['backup','💾 备份']].map(([k,v])=>`
+        <button class="tab-btn ${state.tab===k?'active':''}" onclick="setTab('${k}')">${v}</button>`).join('')}
+    </nav>
+    <div class="content">${tabContent}</div>`;
+
+  // Restore textarea content after render
+  if(state.tab==='record' && state.addMode==='import') {
+    const ta = document.getElementById('importTA');
+    if(ta && state._importText) ta.value = state._importText;
+    if(ta) ta.addEventListener('input', e => state._importText = e.target.value);
+  }
+}
+
+// ── Event handlers ────────────────────────────────────────
+function setTab(t) { state.tab=t; render(); }
+function setMode(m) { state.addMode=m; state.importPreview=[]; state.importAddedIdx=new Set(); state.importFavIdx=new Set(); state._importText=''; render(); }
+
+function handleFoodClick(source, idx) {
+  if(source==='fav') { addFood(state.favorites[idx]); return; }
+  if(source.startsWith('plan_')) {
+    const key = source.replace('plan_','');
+    addFood(MEAL_PLAN[key].suggestions[idx]);
+  }
+}
+function handleRemoveFav(idx) { removeFav(state.favorites[idx].name); }
+
+function handleParse() {
+  const ta = document.getElementById('importTA');
+  const raw = ta ? ta.value : '';
+  state._importText = raw;
+  const err = document.getElementById('parseErr');
+  if(!raw.trim()) { err.textContent='请粘贴从 Claude 对话复制的表格'; err.style.display='block'; return; }
+  const items = parseImport(raw);
+  if(!items.length) { err.textContent='未识别到数据，检查是否含热量数字'; err.style.display='block'; return; }
+  err.style.display='none';
+  state.importPreview = items;
+  state.importAddedIdx = new Set();
+  // Pre-mark already-faved
+  const faved = new Set();
+  items.forEach((it,i)=>{ if(state.favorites.some(f=>f.name===it.name)) faved.add(i); });
+  state.importFavIdx = faved;
+  render();
+  // Restore text
+  const ta2 = document.getElementById('importTA');
+  if(ta2) { ta2.value=raw; ta2.addEventListener('input',e=>state._importText=e.target.value); }
+}
+
+function handlePreviewAdd(i) {
+  if(state.importAddedIdx.has(i)) return;
+  addFood(state.importPreview[i]);
+  state.importAddedIdx.add(i);
+  // Re-render just the preview card buttons without full re-render to keep textarea
+  const cards = document.querySelectorAll('.preview-card');
+  if(cards[i]) {
+    const btn = cards[i].querySelector('button');
+    if(btn) { btn.style.background='#1a3a1a'; btn.style.color='#34d399'; btn.textContent='✓ 已添加'; }
+  }
+}
+function handlePreviewFav(i) {
+  if(state.importFavIdx.has(i)) return;
+  addFav(state.importPreview[i]);
+  state.importFavIdx.add(i);
+  const cards = document.querySelectorAll('.preview-card');
+  if(cards[i]) {
+    const btns = cards[i].querySelectorAll('button');
+    if(btns[1]) { btns[1].style.color='#555'; btns[1].style.borderColor='#2a2d3e'; btns[1].textContent='⭐'; }
+  }
+}
+function handlePreviewAddAll() {
+  state.importPreview.forEach((item,i)=>{ if(!state.importAddedIdx.has(i)){ addFood(item); state.importAddedIdx.add(i); } });
+  showToast(`✓ 已添加 ${state.importPreview.length} 条`);
+  render();
+}
+function handlePreviewFavAll() {
+  state.importPreview.forEach((item,i)=>{ addFav(item); state.importFavIdx.add(i); });
+  showToast('⭐ 已全部收藏');
+  render();
+}
+
+function handleCustomAdd(saveToFav) {
+  const name = document.getElementById('cf-name')?.value?.trim();
+  const cal  = document.getElementById('cf-cal')?.value;
+  if(!name||!cal) { showToast('请填写名称和热量','#ff6b6b'); return; }
+  const item = {name,cal:n(cal),protein:n(document.getElementById('cf-protein')?.value),carb:n(document.getElementById('cf-carb')?.value),fat:n(document.getElementById('cf-fat')?.value),fructose:n(document.getElementById('cf-fructose')?.value)};
+  addFood(item);
+  if(saveToFav) addFav(item);
+  showToast(saveToFav?'✓ 已添加并收藏':'✓ 已添加');
+  render();
+}
+
+function handleCopyBackup() {
+  const ta = document.getElementById('backupTA');
+  const text = ta ? ta.value : '';
+  navigator.clipboard?.writeText(text).then(()=>showToast('✓ 已复制！粘贴到备忘录保存')).catch(()=>showToast('请手动长按复制'));
+}
+function handleRestore() {
+  const ta = document.getElementById('restoreTA');
+  try {
+    const data = JSON.parse(ta?.value||'');
+    if(!data.records&&!data.favorites) throw new Error();
+    if(data.records){ state.records=data.records; lsSet(SK_REC,data.records); }
+    if(data.favorites){ state.favorites=data.favorites; lsSet(SK_FAV,data.favorites); }
+    showToast('✓ 恢复成功！');
+    render();
+  } catch { showToast('❌ 格式错误','#ff6b6b'); }
+}
+
+// ── Init ──────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
